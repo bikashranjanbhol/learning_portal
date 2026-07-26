@@ -1,8 +1,0 @@
-{
-  "title": "System design",
-  "slug": "system-design",
-  "eyebrow": "Course",
-  "description": "Load balancing, hashing, replication and queues — built up from the problems they exist to solve, so you can defend a design under follow-up questions rather than recite one.",
-  "order": 1,
-  "isPremium": true
-}

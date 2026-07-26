@@ -6,7 +6,7 @@ interactive animations, gated behind a paywall.
 **Sprints 0 (foundation), 1 (content pipeline) and 2 (SEO/AEO) are complete.** Sprints 3–5 are
 specified in [`docs/implementation-prompts.md`](docs/implementation-prompts.md).
 
-Pages you can look at right now: `/`, `/courses`, `/courses/system-design`,
+Pages you can look at right now: `/`, `/courses`, `/courses/system-design-beginner`,
 `/learn/system-design/<chapter>` (three of them), `/blog`, `/blog/<slug>`, `/pricing`,
 `/sign-in`, `/dashboard`.
 

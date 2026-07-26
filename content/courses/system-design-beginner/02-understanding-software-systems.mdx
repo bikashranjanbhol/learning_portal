@@ -1,0 +1,457 @@
+---
+title: Understanding Software Systems
+slug: understanding-software-systems
+description: Understand how clients, servers, networks, frontends, backends, databases, and APIs work together, how monoliths differ from distributed systems, and what happens during a complete request-response lifecycle.
+order: 2
+isFree: true
+publishedAt: '2026-07-26'
+updatedAt: '2026-07-26'
+---
+
+A software system is a group of components that cooperate to deliver a useful
+outcome. When a customer opens an online shop, the screen may appear to be one
+application, but several responsibilities are working together: a browser
+presents the interface, a network carries messages, server-side code applies
+business rules, and a database preserves information.
+
+This chapter develops a mental model for those responsibilities. We will keep
+using the online shop from the previous chapter and follow a request from the
+customer's click to the final pixels on the screen.
+
+## How do clients, servers, and networks work together?
+
+A **client** is a program that asks another program for a service. A web browser
+is a client when it requests a page. A mobile application is a client when it
+requests account data. One server can also act as a client when it calls a
+payment provider.
+
+A **server** is a program that listens for requests and produces responses. It
+might return a document, run a calculation, authenticate a user, or read stored
+data. The word can describe software or the machine running it; in system
+design, it usually means the server program or service.
+
+A **network** connects clients and servers. It divides messages into packets,
+moves them through routers and links, and delivers them to the correct
+destination. The public internet is a network of networks. A company's services
+may also communicate through a private network.
+
+<Animation
+  name="client-network-server"
+  ratio="16 / 8"
+  mobileRatio="4 / 7"
+  caption="Send a request from the client through the network to the server, then follow the response back."
+/>
+
+The network is not an invisible wire. It has latency, limited capacity, and
+failure modes. Packets may be delayed, duplicated, arrive out of order, or fail
+to arrive. Protocols such as TCP and HTTPS handle much of this complexity, but
+the application must still use timeouts, retries, and clear error handling.
+
+<Callout variant="note" title="Client and server describe roles">
+  A component is not permanently one or the other. Your browser is a client of the shop. The
+  shop's backend becomes a client when it sends a request to a payment provider.
+</Callout>
+
+### What information travels in a request?
+
+An HTTP request normally includes:
+
+- a method describing the intended action, such as `GET` or `POST`;
+- a path identifying a resource, such as `/api/products`;
+- headers carrying metadata, such as the accepted response format;
+- credentials or a session identifier when authentication is required;
+- an optional body containing data.
+
+The server returns a response containing a status code, headers, and usually a
+body:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "products": [
+    { "id": "p-42", "name": "Desk lamp", "price": 3499 }
+  ]
+}
+```
+
+`200 OK` means the request succeeded. A `404 Not Found` response means the
+requested resource was not found; `500 Internal Server Error` means the server
+could not complete the request. The response should be explicit enough for the
+client to decide what to display or do next.
+
+### Are browsers the only clients?
+
+No. Clients include:
+
+- web browsers;
+- native mobile and desktop applications;
+- command-line programs;
+- smart devices;
+- scheduled jobs;
+- other backend services.
+
+This matters because a system may serve several clients through the same API.
+The web and mobile interfaces can look different while relying on the same
+product and order rules.
+
+## What are the frontend, backend, and database?
+
+These terms divide the system by responsibility rather than by machine.
+
+The **frontend** is the part users see and interact with. In a web application,
+it includes HTML for structure, CSS for appearance, and JavaScript for
+behaviour. It displays information, collects input, performs immediate
+user-interface validation, and calls backend APIs.
+
+The **backend** runs trusted application logic. It authenticates callers,
+authorises actions, validates input, applies business rules, coordinates other
+services, and decides which data to read or change.
+
+The **database** stores information that must survive after a request or server
+process ends. For the shop, that may include customers, products, inventory,
+orders, and payment references.
+
+| Layer    | Typical responsibility         | Shop example                                  |
+| -------- | ------------------------------ | --------------------------------------------- |
+| Frontend | Presentation and interaction   | Show products and collect a delivery address  |
+| Backend  | Trusted rules and coordination | Check inventory and calculate the order total |
+| Database | Durable state and queries      | Store products, customers, and orders         |
+
+The boundary is also a security boundary. Frontend code runs on a user's device
+and can be inspected or changed. Therefore, the backend must never trust a
+price, permission, or validation result merely because the frontend supplied
+it.
+
+<Callout variant="gotcha" title="The frontend is not a security control">
+  Disabling a “Delete account” button does not prevent a caller from sending the API request
+  manually. The backend must verify identity, permission, and input for every protected
+  operation.
+</Callout>
+
+### Why not let the browser query the database directly?
+
+Direct access would expose database credentials and make it difficult to
+enforce business rules consistently. The backend provides a controlled
+boundary:
+
+<Animation
+  name="backend-security-boundary"
+  ratio="16 / 9"
+  mobileRatio="4 / 8"
+  caption="Inspect the backend boundary that protects the database from untrusted client input."
+/>
+
+The backend can change its schema without forcing every client to understand
+the storage layout. It can also combine data from a database, cache, payment
+provider, or another service into one response.
+
+### Does every system use all three layers?
+
+Not necessarily. A static documentation site may have a frontend and no
+application backend. A background data-processing system may have a backend and
+database but no visual frontend. The layers are a useful model, not a mandatory
+technology checklist.
+
+## How do APIs connect components?
+
+An **application programming interface (API)** is a contract through which one
+component offers capabilities to another. The contract defines available
+operations, required input, possible output, and errors.
+
+For example, a product API might offer:
+
+```http
+GET /api/products?category=lighting
+```
+
+```json
+{
+  "items": [
+    {
+      "id": "p-42",
+      "name": "Desk lamp",
+      "price": { "amount": 3499, "currency": "INR" }
+    }
+  ],
+  "nextCursor": null
+}
+```
+
+The client depends on this contract, not on the backend's internal classes or
+database tables. That separation allows the implementation to evolve while the
+interface remains stable.
+
+### What communication styles can components use?
+
+**Synchronous communication** makes the caller wait for a result. HTTP
+request-response is commonly synchronous:
+
+<Animation
+  name="synchronous-payment-call"
+  ratio="16 / 8"
+  mobileRatio="4 / 7"
+  caption="Follow a synchronous payment call and notice that checkout remains waiting until the provider returns a result."
+/>
+
+It is appropriate when the next step needs the result immediately. Its cost is
+coupling: if the payment provider is slow, checkout is also slow.
+
+**Asynchronous communication** lets the caller submit work without waiting for
+all processing to finish:
+
+<Animation
+  name="asynchronous-email-queue"
+  ratio="16 / 8"
+  mobileRatio="4 / 8"
+  caption="Watch the Order service finish after publishing a durable message, while the Email worker continues independently."
+/>
+
+The order can succeed after the message is accepted, while email delivery
+happens separately. This improves responsiveness and isolates failures, but it
+introduces queues, retries, duplicate-message handling, and delayed results.
+
+Components may also communicate through:
+
+- remote procedure calls such as gRPC;
+- event streams;
+- WebSockets for long-lived two-way communication;
+- shared files or object storage;
+- database changes, though using a database as an undocumented API creates
+  tight coupling.
+
+<Callout variant="tip" title="Describe the contract, not just the arrow">
+  When drawing two connected components, say what crosses the boundary, in which direction, and
+  whether the caller waits. “Frontend sends `GET /api/products`; backend returns JSON
+  synchronously” is more useful than “frontend talks to backend.”
+</Callout>
+
+### What makes an API dependable?
+
+A useful API has:
+
+- clear resource and operation names;
+- validated request formats;
+- predictable response formats;
+- meaningful status and error codes;
+- authentication and authorisation where required;
+- timeouts and size limits;
+- compatibility rules when the contract changes;
+- idempotency for operations that may be retried.
+
+An **idempotent** operation can be repeated without creating additional effects.
+Reading a product is naturally idempotent. Creating a payment often needs an
+idempotency key so a retry does not charge the customer twice.
+
+## How do monolithic and distributed systems differ?
+
+A **monolithic system** packages most application capabilities into one
+deployable application. The shop's catalogue, basket, checkout, and account
+modules might run in one process and use one database.
+
+<Animation
+  name="modular-monolith"
+  ratio="16 / 10"
+  mobileRatio="4 / 9"
+  caption="Follow checkout through four internal modules that share one Shop application process and database."
+/>
+
+“Monolith” does not mean unstructured. A well-designed monolith can have clear
+module boundaries, tests, and ownership. Its advantages include:
+
+- simple local development and deployment;
+- direct in-process calls between modules;
+- straightforward transactions;
+- fewer network failures;
+- easier tracing for a small team.
+
+Its limitations become important as it grows:
+
+- the entire application is deployed together;
+- one hot capability may require scaling the whole application;
+- weak module boundaries can create a tightly coupled codebase;
+- a failure may affect more capabilities.
+
+A **distributed system** places capabilities in multiple independently running
+processes, often on multiple machines:
+
+<Animation
+  name="distributed-shop"
+  ratio="16 / 10"
+  mobileRatio="4 / 11"
+  caption="Explore independent catalogue, order, and payment boundaries, including the correct internal call from Order service to Payment service."
+/>
+
+It can scale and deploy capabilities independently and isolate some failures.
+It also introduces network latency, partial failure, data consistency
+challenges, service discovery, observability needs, and more operational work.
+
+| Question      | Monolith                        | Distributed system                             |
+| ------------- | ------------------------------- | ---------------------------------------------- |
+| Communication | In-process calls                | Network calls and messages                     |
+| Deployment    | Usually one unit                | Multiple independent units                     |
+| Transactions  | Often straightforward           | Frequently cross service boundaries            |
+| Failure model | Process-wide                    | Partial and cascading failures                 |
+| Operations    | Simpler                         | More infrastructure and observability          |
+| Best fit      | New or moderately sized product | Proven need for independent scale or ownership |
+
+<Callout variant="warning" title="Distribution is not a free scalability switch">
+  Splitting a system changes local function calls into unreliable network communication. Begin
+  with a well-structured monolith unless requirements justify independent deployment, scaling,
+  isolation, or ownership.
+</Callout>
+
+### Is a monolith the opposite of scalable?
+
+No. A monolithic application can run on several servers behind a load balancer,
+use caching, and operate at substantial scale. “Monolithic” describes how
+application capabilities are packaged, not how many instances may run.
+
+Similarly, a distributed system can scale poorly if its databases, network
+calls, or service dependencies create bottlenecks. Architecture labels do not
+replace measurement and reasoning.
+
+## What happens during a request-response lifecycle?
+
+Step through the diagram before reading the detailed sequence. Notice that
+“loading one page” contains several requests: first for frontend assets, then
+for current product data.
+
+<Animation
+  name="software-request-lifecycle"
+  ratio="16 / 7"
+  mobileRatio="4 / 8"
+  caption="Follow a product-page request through the browser, network, frontend, backend API, and database."
+/>
+
+### 1. The user creates an event
+
+The customer enters a URL, follows a link, or presses a button. The browser
+turns that action into work. If it needs a remote resource, it first identifies
+the destination server and establishes a secure connection.
+
+### 2. The browser sends an HTTP request
+
+The request crosses the network. Along the way it may pass through routers, a
+content delivery network, a firewall, or a load balancer. Each hop adds some
+latency and may fail.
+
+### 3. The server delivers frontend assets
+
+For an initial page load, the server or CDN returns HTML, CSS, JavaScript,
+fonts, and images. The browser parses these resources and constructs the visual
+page. Cached assets may not need another network transfer.
+
+### 4. The frontend calls an API
+
+JavaScript may request current or user-specific information:
+
+```js
+const response = await fetch('/api/products');
+
+if (!response.ok) {
+  showError('Products are temporarily unavailable');
+  return;
+}
+
+const catalogue = await response.json();
+renderProducts(catalogue.items);
+```
+
+The browser may attach cookies or an authorisation token. HTTPS protects the
+message in transit, but the backend must still validate everything it receives.
+
+### 5. The backend processes the request
+
+The backend typically:
+
+1. accepts the connection;
+2. parses the method, path, headers, and body;
+3. authenticates the caller when necessary;
+4. checks authorisation;
+5. validates input;
+6. runs the relevant business logic;
+7. reads or writes data;
+8. serialises a response.
+
+The order matters. An invalid or unauthorised request should be rejected before
+expensive work or data changes occur.
+
+### 6. The database executes a query
+
+The backend uses a database connection rather than exposing the database to the
+browser. The database parses the query, finds an execution plan, reads an index
+or stored records, and returns a result. For a write, it also preserves the
+change according to its transaction and durability guarantees.
+
+### 7. The response travels back
+
+The backend converts its result into JSON, HTML, or another format and adds an
+HTTP status code and headers. The response crosses the network to the browser.
+A request may succeed at the server even if the response is lost, which is why
+blindly retrying non-idempotent operations can be dangerous.
+
+### 8. The browser renders the result
+
+The frontend updates its state and the browser recalculates layout, paints
+pixels, and makes the result interactive. To the customer this appears as one
+action, but the latency is the sum of network travel, queueing, application
+work, database work, serialisation, and rendering.
+
+<Animation
+  name="latency-breakdown"
+  ratio="16 / 10"
+  mobileRatio="4 / 8"
+  caption="Walk through an illustrative 400 ms request trace. Each waterfall span shows when a stage begins, how long it runs, and when the next stage can start."
+/>
+
+This decomposition helps diagnose slow systems. Optimising database code cannot
+fix a delay caused by a large frontend bundle, and adding a cache cannot fix a
+slow third-party payment call unless the result is safe to cache.
+
+## How should you reason about a software system?
+
+For any user action, ask these questions in order:
+
+1. Which client starts the action?
+2. Which component receives the first request?
+3. What data crosses each boundary?
+4. Is each interaction synchronous or asynchronous?
+5. Which component owns the business rule?
+6. Where is durable state stored?
+7. Which failures can the user observe?
+8. What happens when a request is slow, duplicated, or lost?
+
+This turns a box-and-arrow diagram into an explanation of real behaviour.
+
+## Check your understanding
+
+Imagine a student submits an assignment through a learning portal.
+
+1. Identify the client, frontend, backend, and durable storage.
+2. Describe the API request, including its method, path, and body.
+3. Decide which validation belongs in the frontend and which must be repeated
+   in the backend.
+4. Name one synchronous step and one task that could happen asynchronously.
+5. Describe what the student should see if file storage succeeds but the
+   confirmation email fails.
+6. Explain whether you would begin with a monolith or distributed services and
+   state the requirement behind your choice.
+
+## What should you remember?
+
+- Clients request capabilities; servers provide them; networks carry their
+  messages.
+- Frontends present and collect information, backends enforce trusted rules,
+  and databases preserve durable state.
+- An API is a contract between components, not merely a URL.
+- Synchronous calls make a caller wait; asynchronous communication separates
+  acceptance from completion.
+- A structured monolith is often the simplest sound starting point.
+- Distributed systems offer independent boundaries but add network and
+  operational failure modes.
+- A request-response lifecycle includes every step from the user's action to
+  the final rendered result.
+- Good diagrams name the data, direction, waiting behaviour, and failure at
+  every important connection.

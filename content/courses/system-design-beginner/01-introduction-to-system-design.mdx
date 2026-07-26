@@ -1,0 +1,533 @@
+---
+title: Introduction to System Design
+slug: introduction-to-system-design
+description: Learn what system design means, why it matters, how functional and non-functional requirements differ, where high-level and low-level design fit, and the terminology used to describe software systems.
+order: 1
+isFree: true
+publishedAt: '2026-07-26'
+updatedAt: '2026-07-26'
+---
+
+System design is the process of deciding how a software system's parts work
+together to satisfy its requirements. It turns a product goal into an
+architecture: components, data, interfaces, communication paths, and operating
+constraints. Good system design is not about adding the most technology. It is
+about choosing the simplest structure that meets today's needs and can evolve
+safely.
+
+This chapter builds the vocabulary you will use throughout the course. We will
+follow one example—a small online shop—as it grows from an idea into a design.
+
+## What does system design mean?
+
+A software feature answers **what the user can do**. A system design explains
+**how the software makes that possible**.
+
+Suppose a business asks for an online shop where customers can:
+
+- browse products;
+- add products to a basket;
+- place an order;
+- pay for the order;
+- receive a confirmation.
+
+Those statements describe a product. They do not yet tell an engineering team:
+
+- where product and order data live;
+- which component checks inventory;
+- how the browser communicates with the application;
+- what happens if payment succeeds but order creation fails;
+- how many customers can use the shop at once;
+- how the team detects and recovers from a failure.
+
+System design fills that gap. It identifies the system boundary, divides
+responsibilities, describes data flow, and makes the important trade-offs
+explicit.
+
+At a simple level, the shop might look like this:
+
+<Animation
+  name="basic-request-flow"
+  ratio="16 / 8"
+  mobileRatio="4 / 6"
+  caption="Follow one product request from the customer's browser to the application server and relational database, then back again."
+/>
+
+This is already a design. It may be sufficient for a shop receiving a few
+orders per hour. A design does not need microservices, queues, caches, or
+clusters to count as system design.
+
+If the shop grows, evidence may justify adding more components:
+
+<Animation
+  name="scaled-shop-flow"
+  ratio="16 / 8"
+  mobileRatio="4 / 7"
+  caption="Follow an order through a load-balanced application tier, then watch durable data and background email work take separate paths."
+/>
+
+The second diagram is not automatically better. It supports more traffic and
+isolates email delivery from checkout, but it also costs more and creates more
+failure modes. System design is the reasoning that tells us when the additional
+complexity is worth paying for.
+
+<Callout variant="gotcha" title="Complexity is a cost, not a sign of maturity">
+  A queue, cache, or microservice is useful only when it solves a requirement or a measured
+  problem. Adding components “for scale” before defining the scale makes a system harder to
+  build, test, operate, and debug without proving that it is more useful.
+</Callout>
+
+### What decisions belong to system design?
+
+System design includes decisions about:
+
+1. **Boundaries:** What is inside the system, and what is provided by an
+   external service?
+2. **Components:** Which major parts exist, and what is each responsible for?
+3. **Data:** What information is stored, in what shape, and where?
+4. **Communication:** How do components exchange requests, responses, and
+   events?
+5. **Quality:** How fast, reliable, secure, and scalable must the system be?
+6. **Failure:** What can fail, what is the effect, and how does the system
+   recover?
+7. **Evolution:** How can the design change as requirements and traffic change?
+
+The answers depend on context. A payment ledger and a photo-like counter both
+store numbers, but they should not make the same consistency trade-offs.
+
+## Why does system design matter?
+
+System design matters because code runs inside a larger environment. A function
+can be correct while the system around it is slow, insecure, unreliable, or too
+expensive to operate.
+
+Consider a checkout handler:
+
+```ts
+async function checkout(order: Order) {
+  await chargeCard(order);
+  await saveOrder(order);
+  await sendConfirmationEmail(order);
+}
+```
+
+The sequence is easy to read, but it hides system-level questions:
+
+- If the network times out after the card is charged, will retrying charge it
+  twice?
+- If the database is unavailable, how is the successful payment reconciled?
+- If the email provider is slow, should checkout make the customer wait?
+- If two customers buy the last item, which order gets it?
+- Where are payment credentials stored, and who may read them?
+
+No local refactor answers all of these. They require decisions about
+idempotency, transactions, asynchronous work, concurrency, security, and
+ownership.
+
+### How does design affect users?
+
+Users experience architectural decisions even when they never see the
+architecture:
+
+| Design decision                         | User-visible effect                                           |
+| --------------------------------------- | ------------------------------------------------------------- |
+| Serve images through a nearby CDN       | Product pages load faster                                     |
+| Send confirmation email asynchronously  | Checkout responds without waiting for the email provider      |
+| Replicate data                          | The shop can keep serving some requests after a machine fails |
+| Use a stale cache                       | Pages load quickly, but a price may briefly be out of date    |
+| Require every region to confirm a write | Orders are strongly consistent, but checkout takes longer     |
+
+A design succeeds when it delivers the product's important qualities—not when
+its diagram resembles a fashionable architecture.
+
+### How does design affect engineering teams?
+
+A clear design gives a team:
+
+- shared boundaries and component responsibilities;
+- stable interfaces that allow work to proceed in parallel;
+- known assumptions that can be tested;
+- named risks and failure scenarios;
+- a basis for estimating cost and delivery work;
+- a record of why one option was selected over another.
+
+Without this shared model, architecture still exists; it is merely accidental
+and understood differently by each person.
+
+### How does system design help in interviews?
+
+A system design interview uses an incomplete problem to evaluate how you:
+
+- clarify what matters;
+- reduce ambiguity;
+- estimate scale;
+- divide a system into responsibilities;
+- connect decisions to requirements;
+- identify costs and failure modes;
+- adjust when a constraint changes.
+
+The interviewer is not looking for one secret diagram. A simple design you can
+justify is stronger than a complicated design you cannot defend.
+
+<Callout variant="tip" title="Practise the reason, not only the component">
+  Whenever you add a component, finish this sentence: “We need this because…” Then add: “The
+  cost of this choice is…” Those two statements reveal more understanding than naming the
+  component.
+</Callout>
+
+## What is the difference between functional and non-functional requirements?
+
+**Functional requirements** describe behaviours the system must provide.
+**Non-functional requirements** describe the qualities and constraints under
+which those behaviours must operate.
+
+For the online shop:
+
+| Functional requirement                 | Non-functional requirement                           |
+| -------------------------------------- | ---------------------------------------------------- |
+| A customer can search for a product    | 95% of searches return within 300 ms                 |
+| A customer can place an order          | An acknowledged order must not be lost               |
+| A customer can pay by card             | Card details must be encrypted in transit            |
+| An administrator can update inventory  | Inventory updates become visible within five seconds |
+| The system sends an order confirmation | A slow email provider must not block checkout        |
+
+The left column says what the system does. The right column often decides how
+it must be designed.
+
+### Which qualities commonly appear as non-functional requirements?
+
+#### Performance
+
+How quickly does the system respond, and how much work can it complete?
+
+- **Latency:** time required for one operation.
+- **Throughput:** number of operations completed per unit of time.
+
+“Search responds within 300 ms at the 95th percentile” is a performance
+requirement. “The system is fast” is only an aspiration.
+
+#### Scalability
+
+Can the system handle growth in users, requests, or data without unacceptable
+performance or cost?
+
+Scalability does not mean “must serve billions of users.” A useful requirement
+includes an expected scale, such as 5,000 peak requests per second or 10 TB of
+new data per year.
+
+#### Availability
+
+How often can users successfully access the service?
+
+An availability target might say that product browsing must remain available
+during the loss of one application server. Different operations can have
+different targets: browsing may remain available while checkout is temporarily
+disabled to protect correctness.
+
+#### Reliability and durability
+
+- **Reliability** asks whether the system behaves correctly over time.
+- **Durability** asks whether acknowledged data survives failures.
+
+An order appearing twice is a reliability failure. An acknowledged order
+disappearing is a durability failure.
+
+#### Consistency
+
+When data has multiple copies, what value may a reader observe after an update?
+
+The shop might allow a product description to remain stale for several seconds,
+but require inventory reservation to use the latest confirmed quantity.
+
+#### Security and privacy
+
+Who can perform an action, how is data protected, and which legal or
+organisational rules apply?
+
+Examples include encrypting traffic, limiting administrator permissions,
+recording sensitive changes, and deleting personal information after a
+retention period.
+
+#### Maintainability and cost
+
+Can the responsible team understand, test, deploy, and operate the system within
+its budget?
+
+A technically scalable architecture that requires ten specialists to operate
+is a poor design for a three-person team.
+
+### Can a requirement be both functional and non-functional?
+
+The categories support reasoning; they are not laws of nature. “Users can reset
+their password” is functional. “A reset link expires after 15 minutes and can
+be used only once” adds security and reliability constraints to that function.
+
+What matters is making the complete expectation explicit.
+
+### Why do non-functional requirements create trade-offs?
+
+Qualities compete:
+
+- stronger consistency can increase latency;
+- more replicas can improve availability but increase cost;
+- aggressive caching can improve speed but return stale data;
+- detailed logging can improve diagnosis but increase storage cost and privacy
+  risk;
+- supporting every possible extension can delay the simple version users need
+  now.
+
+Good design prioritises the qualities that matter for this product and remains
+honest about what was traded away.
+
+## How does high-level design differ from low-level design?
+
+**High-level design (HLD)** describes the system's major components and how data
+moves between them. **Low-level design (LLD)** describes the internal structure
+and behaviour of a component in enough detail to implement it.
+
+They are different levels of zoom, not competing methods.
+
+### What appears in a high-level design?
+
+For the online shop, an HLD might show:
+
+- web and mobile clients;
+- a load balancer;
+- application services;
+- a relational database;
+- a cache;
+- object storage for product images;
+- a payment provider;
+- a message queue and email worker.
+
+It should show important communication paths, data ownership, system
+boundaries, and external dependencies.
+
+<Animation
+  name="hld-shop-map"
+  ratio="16 / 12"
+  mobileRatio="4 / 9"
+  caption="Step through the online shop's high-level design to see which components participate in each synchronous and asynchronous flow."
+/>
+
+An HLD answers questions such as:
+
+- Which component receives a checkout request?
+- Where is order data stored?
+- Which work happens synchronously?
+- Which external systems do we depend on?
+- Where can the architecture scale or fail?
+
+### What appears in a low-level design?
+
+Zooming into the order component, an LLD might define:
+
+- `Order`, `OrderLine`, `Money`, and `PaymentAttempt` data structures;
+- database tables and constraints;
+- API request and response fields;
+- validation rules;
+- class or module responsibilities;
+- state transitions such as `PENDING → PAID → FULFILLED`;
+- error handling and retry behaviour.
+
+```ts
+type OrderStatus = 'PENDING' | 'PAID' | 'FULFILLED' | 'CANCELLED';
+
+type Order = {
+  id: string;
+  customerId: string;
+  lines: OrderLine[];
+  total: Money;
+  status: OrderStatus;
+};
+```
+
+This model is useful, but it does not explain how traffic reaches the order
+service or how the system survives a database failure. That is the HLD's job.
+
+### Which level should you begin with?
+
+Begin at the level of the question.
+
+For a system design interview, clarify requirements and establish the HLD
+before diving into schemas, algorithms, or classes. Then zoom into the
+components that carry the most risk.
+
+For an implementation task inside an established architecture, the system
+boundary may already be decided, so starting with an API contract or data model
+can be appropriate.
+
+Use this rule:
+
+> Start wide enough to show context, then zoom in where a decision affects
+> correctness, scale, or risk.
+
+<Callout variant="warning" title="Detail can hide a missing architecture">
+  Spending ten minutes perfecting an `Order` class does not compensate for an unexplained
+  payment flow. Detail is valuable only after the system boundary and main data flow are clear.
+</Callout>
+
+## Which system design terms should you know?
+
+These terms will recur throughout the course. You do not need to memorise every
+implementation yet; learn the distinction each term expresses.
+
+### Client and server
+
+A **client** initiates a request for a capability or resource. A **server**
+receives requests and returns responses. These are roles, not necessarily
+machines: one service can be a server to a mobile app and a client of a payment
+provider.
+
+### Request and response
+
+A **request** asks a component to perform an operation. A **response** reports
+the result. HTTP APIs commonly use this synchronous pattern: the requester waits
+for a response.
+
+### API
+
+An **application programming interface** is a contract through which software
+components communicate. It defines available operations, inputs, outputs, and
+errors without requiring callers to understand the implementation.
+
+### Database
+
+A **database** stores and retrieves structured information. Different database
+models make different operations and guarantees easier; “database” does not
+mean only a relational table.
+
+### Cache
+
+A **cache** keeps a reusable copy of data in a location that is faster or
+cheaper to access. A cache can improve latency and reduce load, but the copy can
+become stale.
+
+### Latency, throughput, and bandwidth
+
+- **Latency:** how long one operation takes.
+- **Throughput:** how many operations a system completes in a period.
+- **Bandwidth:** how much data a connection can transfer in a period.
+
+A road analogy helps: latency is the travel time for one vehicle; throughput is
+the number of vehicles arriving per minute; bandwidth is the road's carrying
+capacity.
+
+### Vertical and horizontal scaling
+
+- **Vertical scaling:** give one machine more CPU, memory, or storage.
+- **Horizontal scaling:** add more machines and distribute the work.
+
+Vertical scaling is often simpler. Horizontal scaling can exceed the limits of
+one machine, but it introduces coordination and distributed failure.
+
+### Load balancer
+
+A **load balancer** distributes incoming traffic across multiple healthy
+servers. It can improve capacity and availability, but the load-balancing layer
+must also avoid becoming a single point of failure.
+
+### Replication
+
+**Replication** keeps copies of data or services on multiple nodes. It can
+improve availability and read capacity, while creating questions about update
+ordering and stale copies.
+
+### Partitioning and sharding
+
+**Partitioning** divides data into subsets. **Sharding** commonly means placing
+those subsets on different database nodes. It spreads storage and traffic but
+makes cross-shard operations and rebalancing harder.
+
+### Synchronous and asynchronous communication
+
+- **Synchronous:** the caller waits for the work or response.
+- **Asynchronous:** the caller submits work or an event and continues; another
+  component handles it later.
+
+Payment authorization usually needs a synchronous result before checkout can
+complete. Sending a confirmation email is usually safe to perform
+asynchronously.
+
+### Availability and fault tolerance
+
+- **Availability:** the system can serve requests when needed.
+- **Fault tolerance:** the system continues providing an acceptable service
+  when part of it fails.
+
+Redundancy can support both, but only if failure is detected and traffic can
+move to a healthy copy.
+
+### Single point of failure
+
+A **single point of failure** is a component whose loss stops the whole critical
+flow. Drawing two application servers does not remove the single point if both
+depend on one unprotected database.
+
+### Bottleneck
+
+A **bottleneck** is the resource or component currently limiting system
+performance or capacity. Optimising a component that is not the bottleneck may
+not improve the system at all.
+
+### Trade-off
+
+A **trade-off** is a decision that improves one important quality while paying
+in another—such as latency, consistency, availability, complexity, security,
+cost, or delivery time.
+
+Saying “use a cache” names a component. Saying “cache product details for lower
+read latency, accepting up to 30 seconds of staleness” describes a design
+decision.
+
+## How do the ideas fit together?
+
+Return to the online shop and apply the chapter in order:
+
+1. **Define the behaviour:** customers browse products and place orders.
+2. **Define the qualities:** browsing should be fast; acknowledged orders must
+   not be lost; payment data must be protected.
+3. **Draw the HLD:** client, application server, database, payment provider, and
+   their communication paths.
+4. **Zoom into risky details:** order states, inventory updates, payment retries,
+   and database constraints.
+5. **Use terminology precisely:** explain latency, replication, asynchronous
+   email, bottlenecks, and trade-offs without treating them as buzzwords.
+
+This is the basic rhythm of system design: requirements first, structure
+second, critical details third.
+
+## Check your understanding
+
+Imagine a school needs a portal where students submit assignments and teachers
+grade them.
+
+1. Write three functional requirements.
+2. Write four measurable non-functional requirements covering performance,
+   durability, availability, and security.
+3. Sketch an HLD with no more than six components.
+4. Choose one component and list three details that belong in its LLD.
+5. Identify one possible bottleneck and one single point of failure.
+6. Add one component to address a requirement, then state the cost of adding
+   it.
+
+If you cannot connect a component to a requirement, remove it until a
+requirement justifies it.
+
+## What should you remember?
+
+- System design decides how components, data, and communication satisfy a
+  product's requirements.
+- Good design is contextual; more components do not automatically make it
+  better.
+- Functional requirements describe behaviour. Non-functional requirements
+  describe qualities and constraints.
+- HLD shows the major system structure. LLD explains how a component is
+  implemented.
+- Precise terminology makes assumptions, costs, and trade-offs easier to
+  discuss.
+- Every major component should exist for a reason you can state.
+
+The next chapter examines software systems from the request's point of view:
+clients, servers, frontend, backend, databases, APIs, and the complete
+request-response lifecycle.

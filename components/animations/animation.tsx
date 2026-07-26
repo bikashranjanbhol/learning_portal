@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useEffect, useRef, useState, type ComponentType } from 'react';
+import { useEffect, useRef, useState, type ComponentType, type CSSProperties } from 'react';
 
 /**
  * The single entry point for every interactive diagram.
@@ -47,6 +47,59 @@ const SCENES: Record<string, ComponentType<SceneProps>> = {
     () => import('./scenes/latency-scale').then((m) => m.LatencyScaleScene),
     { ssr: false, loading: () => <SceneSkeleton /> },
   ),
+  'basic-request-flow': dynamic(
+    () => import('./scenes/basic-request-flow').then((m) => m.BasicRequestFlowScene),
+    { ssr: false, loading: () => <SceneSkeleton /> },
+  ),
+  'scaled-shop-flow': dynamic(
+    () => import('./scenes/scaled-shop-flow').then((m) => m.ScaledShopFlowScene),
+    { ssr: false, loading: () => <SceneSkeleton /> },
+  ),
+  'hld-shop-map': dynamic(
+    () => import('./scenes/hld-shop-map').then((m) => m.HldShopMapScene),
+    {
+      ssr: false,
+      loading: () => <SceneSkeleton />,
+    },
+  ),
+  'software-request-lifecycle': dynamic(
+    () =>
+      import('./scenes/software-request-lifecycle').then(
+        (m) => m.SoftwareRequestLifecycleScene,
+      ),
+    { ssr: false, loading: () => <SceneSkeleton /> },
+  ),
+  'client-network-server': dynamic(
+    () => import('./scenes/client-network-server').then((m) => m.ClientNetworkServerScene),
+    { ssr: false, loading: () => <SceneSkeleton /> },
+  ),
+  'backend-security-boundary': dynamic(
+    () =>
+      import('./scenes/backend-security-boundary').then((m) => m.BackendSecurityBoundaryScene),
+    { ssr: false, loading: () => <SceneSkeleton /> },
+  ),
+  'synchronous-payment-call': dynamic(
+    () =>
+      import('./scenes/synchronous-payment-call').then((m) => m.SynchronousPaymentCallScene),
+    { ssr: false, loading: () => <SceneSkeleton /> },
+  ),
+  'asynchronous-email-queue': dynamic(
+    () =>
+      import('./scenes/asynchronous-email-queue').then((m) => m.AsynchronousEmailQueueScene),
+    { ssr: false, loading: () => <SceneSkeleton /> },
+  ),
+  'modular-monolith': dynamic(
+    () => import('./scenes/modular-monolith').then((m) => m.ModularMonolithScene),
+    { ssr: false, loading: () => <SceneSkeleton /> },
+  ),
+  'distributed-shop': dynamic(
+    () => import('./scenes/distributed-shop').then((m) => m.DistributedShopScene),
+    { ssr: false, loading: () => <SceneSkeleton /> },
+  ),
+  'latency-breakdown': dynamic(
+    () => import('./scenes/latency-breakdown').then((m) => m.LatencyBreakdownScene),
+    { ssr: false, loading: () => <SceneSkeleton /> },
+  ),
 };
 
 export type AnimationName = keyof typeof SCENES;
@@ -68,10 +121,13 @@ export function Animation({
    * default that silently works badly.
    */
   ratio = '16 / 10',
+  mobileRatio,
 }: {
   name: string;
   caption?: string;
   ratio?: string;
+  /** Optional taller slot for scenes that reflow vertically on narrow screens. */
+  mobileRatio?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [shouldMount, setShouldMount] = useState(false);
@@ -126,14 +182,19 @@ export function Animation({
         ref={containerRef}
         // The reserved box. Height is known before the scene loads, so nothing
         // below it moves when it does.
-        style={{ aspectRatio: ratio }}
-        className="overflow-hidden rounded-lg border border-[var(--border)]"
+        style={
+          {
+            '--scene-ratio': ratio,
+            '--scene-mobile-ratio': mobileRatio ?? ratio,
+          } as CSSProperties
+        }
+        className="aspect-[var(--scene-mobile-ratio)] overflow-hidden rounded-lg border border-[var(--border)] sm:aspect-[var(--scene-ratio)]"
       >
         {shouldMount ? <Scene /> : <SceneSkeleton />}
       </div>
 
       {caption ? (
-        <figcaption className="mt-2 text-sm text-pretty text-[var(--fg-muted)]">
+        <figcaption className="mt-2 text-pretty text-sm text-[var(--fg-muted)]">
           {caption}
         </figcaption>
       ) : null}

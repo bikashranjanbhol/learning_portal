@@ -486,7 +486,7 @@ app/
   sitemap.ts
   robots.ts
 content/                # MDX, version-controlled
-  courses/system-design/*.mdx
+  courses/system-design-beginner/*.mdx
   blog/*.mdx
 components/
   seo/JsonLd.tsx        # typed schema.org builders

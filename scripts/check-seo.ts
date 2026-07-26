@@ -139,9 +139,9 @@ type RouteSpec = {
 const ROUTES: RouteSpec[] = [
   { path: '/', requiredTypes: ['Organization', 'WebSite', 'Person'] },
   { path: '/courses' },
-  { path: '/courses/system-design', requiredTypes: ['Course', 'BreadcrumbList'] },
+  { path: '/courses/system-design-beginner', requiredTypes: ['Course', 'BreadcrumbList'] },
   {
-    path: '/learn/system-design/what-is-system-design',
+    path: '/learn/system-design-beginner/introduction-to-system-design',
     requiredTypes: ['TechArticle', 'BreadcrumbList'],
     chapterIsFree: true, // isFree: true in frontmatter
     expectPremiumWrapper: false,
@@ -377,8 +377,9 @@ async function checkRoute(spec: RouteSpec) {
       // JS disabled gets the whole chapter with no gate at all.
       assert(
         spec.path,
-        /class=["'][^"']*\bpremium-content\b[^"']*["'][^>]*data-gated=["']true["']/.test(html) ||
-          /data-gated=["']true["'][^>]*class=["'][^"']*\bpremium-content\b/.test(html),
+        /class=["'][^"']*\bpremium-content\b[^"']*["'][^>]*data-gated=["']true["']/.test(
+          html,
+        ) || /data-gated=["']true["'][^>]*class=["'][^"']*\bpremium-content\b/.test(html),
         'the gate is server-rendered in the locked state',
         'data-gated="true" was not found on the wrapper — the paywall would be open by default',
       );
