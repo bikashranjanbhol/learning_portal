@@ -1,0 +1,302 @@
+---
+title: How do you turn an ambiguous prompt into requirements?
+slug: requirements-and-scope
+description: Turn a broad system design prompt into a small, testable specification by identifying users, core actions, scale, quality attributes, and explicit exclusions before drawing the architecture.
+order: 3
+isFree: true
+publishedAt: '2026-07-26'
+updatedAt: '2026-07-26'
+---
+
+Turn an ambiguous system design prompt into requirements by answering five
+questions: who uses the system, what they must be able to do, how much traffic
+it receives, which quality matters most, and what is explicitly out of scope.
+This gives the design a boundary. Without that boundary, every architecture
+decision is an unsupported guess.
+
+“Design a photo-sharing service” could mean a private family album, an
+Instagram-scale public feed, or a storage product for professional
+photographers. Those systems share a noun but not an architecture.
+
+## Why should you delay drawing the architecture?
+
+The first boxes you draw create momentum. Once a database, queue, and cache are
+on the board, candidates tend to defend them even when later requirements show
+they are unnecessary. Clarification prevents that anchoring.
+
+Requirements also provide the reason behind each component:
+
+| Requirement                                           | Architectural consequence                      |
+| ----------------------------------------------------- | ---------------------------------------------- |
+| Images must load globally within 300 ms               | Store objects near users through a CDN         |
+| A new post may take five seconds to reach followers   | Asynchronous fan-out is acceptable             |
+| A private photo must never be shown to the wrong user | Authorization belongs on every read path       |
+| Users can search captions                             | The system needs a searchable index            |
+| Deleted photos must disappear within 24 hours         | Deletion must propagate to replicas and caches |
+
+The table is not the design. It is the chain of evidence the design must
+satisfy.
+
+<Callout variant="gotcha" title="A feature list is not enough">
+  “Upload, view, like, and follow” describes behaviour, but not the conditions under which that
+  behaviour must work. Scale, latency, consistency, durability, and privacy are requirements
+  too.
+</Callout>
+
+## Which functional requirements should you select?
+
+Functional requirements describe what a user or another system can do. Start
+with actors and their most important actions.
+
+For a photo-sharing service:
+
+- a user uploads a photo with a caption;
+- a user follows or unfollows another user;
+- a user views a home feed;
+- a user views a profile and its photos;
+- a user likes a photo.
+
+In a 45-minute interview, implementing all five in equal depth is unrealistic.
+Choose two or three core flows and say so:
+
+> I propose that we design photo upload and home-feed reads in depth. We will
+> keep follows and likes in scope because they affect the feed, but we will not
+> design comments, messaging, or recommendation ranking unless you would prefer
+> one of those.
+
+This is not avoiding the problem. It is showing that you can allocate limited
+engineering time deliberately.
+
+### How do you find the core flow?
+
+Ask which action creates the product's value and which action dominates the
+workload. They may be different.
+
+In a photo-sharing product, upload creates the content while feed reads generate
+most traffic. Both deserve attention. Password reset is important, but it does
+not shape the central data path, so it can remain outside the design.
+
+A useful test is:
+
+> If this action stopped working, would the product still deliver its main
+> value?
+
+If the answer is no, it is probably a core flow.
+
+## Which non-functional requirements change the design?
+
+Non-functional requirements describe how well the system must behave. Avoid
+asking “Does it need to be scalable?” Every meaningful service does. Ask
+questions that force a choice.
+
+### Scale
+
+- How many daily active users should we assume?
+- How frequently does each user read and write?
+- What is the typical and maximum object size?
+- Is traffic steady, seasonal, or bursty?
+
+### Performance
+
+- Which operations are interactive?
+- What latency is acceptable at the 95th or 99th percentile?
+- Can work continue after the response is returned?
+
+### Availability and durability
+
+- Which operations must remain available during a partial failure?
+- Is losing acknowledged data ever acceptable?
+- How quickly must the service recover?
+
+### Consistency
+
+- Must every user see a write immediately?
+- Is temporary staleness acceptable, and for how long?
+- What must never be duplicated or applied twice?
+
+### Security and privacy
+
+- Is content public, private, or shared with a group?
+- Does the system store regulated or sensitive information?
+- What must happen after access is revoked or data is deleted?
+
+You rarely need a detailed answer to every question. You need the answers that
+would cause you to choose a different architecture.
+
+## How do you turn vague qualities into testable targets?
+
+Words such as “fast,” “reliable,” and “large-scale” are not yet requirements.
+Attach a measurement and a scope.
+
+| Vague statement                    | Testable requirement                                                     |
+| ---------------------------------- | ------------------------------------------------------------------------ |
+| The feed should be fast            | 95% of first-page feed requests complete within 300 ms                   |
+| Photos must not be lost            | Once an upload is acknowledged, it survives the loss of one storage node |
+| The service should scale           | Support 10 million daily users and 100,000 peak feed reads per second    |
+| Likes can be eventually consistent | A new like may take up to five seconds to appear for other users         |
+| The system should be available     | Feed reads remain available during the loss of one availability zone     |
+
+These numbers are assumptions, not universal truths. State them, check that they
+are plausible, and revise them when the interviewer supplies different ones.
+
+<Callout variant="note" title="Percentiles matter">
+  An average latency can hide a painful user experience. “Average 100 ms” is compatible with a
+  small group of requests taking several seconds. Production systems usually discuss a
+  percentile, such as p95 or p99, plus the operation being measured.
+</Callout>
+
+## How do read and write paths reveal hidden requirements?
+
+Walk through one important read and one important write from the user's point of
+view.
+
+For an upload:
+
+1. The client requests permission to upload.
+2. The image bytes are transferred.
+3. Metadata is stored.
+4. The upload becomes visible on the profile.
+5. Followers eventually see it in their feeds.
+
+That sequence exposes questions a feature list misses:
+
+- Can the client upload directly to object storage?
+- What happens if bytes arrive but metadata creation fails?
+- When may the API tell the user the upload succeeded?
+- Does the original image need virus scanning or transformation?
+- How quickly must the feed include the new post?
+
+For a feed read:
+
+1. The client asks for the first page.
+2. The service identifies visible posts.
+3. It orders and paginates them.
+4. It returns metadata and image locations.
+5. The client downloads images.
+
+Now pagination, authorization, ranking, CDN delivery, and stale results are part
+of the conversation. Walking the paths is the fastest way to discover the real
+system.
+
+## What should be explicitly out of scope?
+
+An exclusion prevents an unfinished topic from silently becoming a requirement.
+Good exclusions are precise and easy to revisit:
+
+- video uploads and live streaming;
+- recommendation-model training;
+- comments and direct messages;
+- advertising and analytics pipelines;
+- moderation tooling beyond a placeholder review status;
+- multi-region writes for the first version.
+
+Do not exclude the hard part of the prompt. If asked to design a feed, saying
+“ranking is out of scope” may be reasonable, but excluding feed generation
+itself is not.
+
+You can also define a first version:
+
+> Version one serves a single geographic region, stores photos durably, and
+> provides chronological feeds. We will leave recommendation ranking and
+> active-active regional writes for later evolution.
+
+This creates a simple baseline that can grow when new constraints arrive.
+
+## What does a complete requirements summary look like?
+
+After three to five minutes, summarize what you heard. For the photo-sharing
+example:
+
+### Functional scope
+
+- upload a photo and caption;
+- follow another user;
+- read a chronological home feed;
+- view a user's profile;
+- public accounts only for the initial design.
+
+### Scale assumptions
+
+- 10 million daily active users;
+- 2 photo uploads per active user per week;
+- 50 feed reads per active user per day;
+- 4 MB average original image;
+- peak traffic is three times the daily average.
+
+### Quality requirements
+
+- p95 first-page feed latency below 300 ms;
+- acknowledged originals must survive a storage-node failure;
+- feed updates may be five seconds stale;
+- temporary like-count inaccuracies are acceptable;
+- upload failure must not create a permanently broken post.
+
+### Exclusions
+
+- video, messaging, advertisements, and recommendation training;
+- detailed authentication implementation;
+- multi-region writes.
+
+The interviewer can now correct one assumption without replacing the whole
+problem. Once they agree, estimation and architecture have a stable input.
+
+## Which clarification mistakes weaken an interview?
+
+### Asking a memorized checklist without using the answers
+
+Every question should affect the design. If you ask whether consistency matters
+and then never mention consistency again, the clarification was ceremonial.
+
+### Spending too long on product details
+
+Three to five minutes is usually enough. Clarify what changes architecture, not
+button placement or every possible user story.
+
+### Inventing precision
+
+“Exactly 12.4 million users” sounds less credible than “assume roughly 10
+million daily users.” Estimation needs an order of magnitude, not fictional
+analytics.
+
+### Treating all requirements as equally important
+
+Requirements conflict. Lower latency may require replication and caching, which
+increase cost and can return stale data. Name the priority that wins.
+
+### Never confirming the scope
+
+End with a short spoken specification. It lets the interviewer correct you
+before you build on a false assumption.
+
+## What framework can you reuse?
+
+Use **SCOPE**:
+
+1. **S — Select users and core actions.**
+2. **C — Choose measurable scale assumptions.**
+3. **O — Order the quality attributes that matter most.**
+4. **P — Play through one read path and one write path.**
+5. **E — Exclude secondary features and confirm the boundary.**
+
+The result should fit in a small corner of the whiteboard. Keep it visible:
+every later component should trace back to one of these requirements.
+
+## Try it yourself
+
+For the prompt “Design a collaborative document editor,” write:
+
+1. three core functional requirements;
+2. four scale assumptions;
+3. three quality targets, including one consistency target;
+4. one important read or write path;
+5. four explicit exclusions.
+
+Then introduce this follow-up: users must continue editing during a temporary
+network disconnection. Identify which requirement changes and which part of
+your likely design must now become more sophisticated.
+
+## What comes next?
+
+Requirements define the target; estimates reveal its size. In the next chapter,
+you will turn users and actions into requests per second, bandwidth, storage,
+and memory without pretending that uncertain inputs are exact.

@@ -16,7 +16,7 @@ const pillars = [
   {
     title: 'System design',
     body: 'Load balancers, consistent hashing, replication, queues — built up from why they exist, not memorised as a checklist.',
-    href: '/courses/system-design',
+    href: '/courses/system-design-beginner',
   },
   {
     title: 'Low-level design',
@@ -33,16 +33,16 @@ const pillars = [
 export default function HomePage() {
   return (
     <>
-      <section className="mx-auto max-w-6xl px-4 pt-20 pb-16 sm:px-6 sm:pt-28">
+      <section className="mx-auto max-w-6xl px-4 pb-16 pt-20 sm:px-6 sm:pt-28">
         {/*
           The first 60 words answer what this is and who it is for, per
           CLAUDE.md #12 and plan §11.4 — this is the text that gets extracted
           and cited by answer engines.
         */}
-        <h1 className="max-w-3xl text-4xl font-bold tracking-tight text-balance sm:text-5xl">
+        <h1 className="max-w-3xl text-balance text-4xl font-bold tracking-tight sm:text-5xl">
           Interview preparation that explains the reasoning, not just the answer
         </h1>
-        <p className="mt-6 max-w-2xl text-lg text-pretty text-[var(--fg-muted)]">
+        <p className="mt-6 max-w-2xl text-pretty text-lg text-[var(--fg-muted)]">
           Courses on system design, low-level design, and data structures and algorithms,
           written as interactive chapters. Every trade-off is worked through in full, so you can
           defend a design under follow-up questions rather than recite one.
@@ -80,7 +80,7 @@ export default function HomePage() {
               className="rounded-xl border border-[var(--border)] p-6 transition-colors hover:bg-[var(--bg-subtle)]"
             >
               <h3 className="font-semibold">{pillar.title}</h3>
-              <p className="mt-2 text-sm text-pretty text-[var(--fg-muted)]">{pillar.body}</p>
+              <p className="mt-2 text-pretty text-sm text-[var(--fg-muted)]">{pillar.body}</p>
             </Link>
           ))}
         </div>

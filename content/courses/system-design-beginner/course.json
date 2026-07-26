@@ -1,0 +1,8 @@
+{
+  "title": "System Design for Beginners",
+  "slug": "system-design-beginner",
+  "eyebrow": "Beginner course",
+  "description": "Learn to turn an ambiguous prompt into requirements, estimates, APIs, data models, and a clear architecture you can explain under follow-up questions.",
+  "order": 1,
+  "isPremium": true
+}

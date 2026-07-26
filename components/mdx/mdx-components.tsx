@@ -29,7 +29,7 @@ function heading(Tag: 'h2' | 'h3' | 'h4', className: string) {
         <a
           href={`#${id}`}
           aria-label="Link to this section"
-          className="ml-2 text-[var(--fg-muted)] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+          className="ml-2 text-[var(--fg-muted)] opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
         >
           #
         </a>
@@ -95,12 +95,13 @@ function MdxLink({ href = '', children, ...props }: AnchorHTMLAttributes<HTMLAnc
  */
 function Pre({
   children,
+  className,
   ...props
 }: HTMLAttributes<HTMLPreElement> & { 'data-language'?: string }) {
   return (
     <CodeBlock
       language={props['data-language']}
-      className="overflow-x-auto rounded-lg border border-[var(--border)] py-4 pt-9 text-sm leading-relaxed [&_[data-line]]:px-4 [&>code]:grid [&>code]:bg-transparent [&>code]:p-0"
+      className={`shiki ${className ?? ''} m-0 overflow-x-auto border-0 px-0 py-5 text-[13px] leading-6 outline-none sm:text-sm [&>code]:grid [&>code]:min-w-max [&>code]:bg-transparent [&>code]:p-0 [&_[data-line]]:px-5`}
       {...props}
     >
       {children}
@@ -109,10 +110,24 @@ function Pre({
 }
 
 /** Inline code only — block code arrives already wrapped in <pre>. */
-function InlineCode({ children, ...props }: HTMLAttributes<HTMLElement>) {
+function InlineCode({
+  children,
+  className,
+  ...props
+}: HTMLAttributes<HTMLElement> & { 'data-language'?: string }) {
+  const isBlockCode = props.style?.display === 'grid';
+
+  if (isBlockCode) {
+    return (
+      <code className={`${className ?? ''} font-mono`} {...props}>
+        {children}
+      </code>
+    );
+  }
+
   return (
     <code
-      className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] px-1.5 py-0.5 font-mono text-[0.875em]"
+      className={`${className ?? ''} rounded border border-[var(--border)] bg-[var(--bg-subtle)] px-1.5 py-0.5 font-mono text-[0.875em]`}
       {...props}
     >
       {children}
@@ -126,7 +141,7 @@ export const mdxComponents = {
   h4: heading('h4', 'mt-6 mb-2 text-lg font-semibold tracking-tight'),
 
   p: (props: HTMLAttributes<HTMLParagraphElement>) => (
-    <p className="my-4 leading-7 text-pretty" {...props} />
+    <p className="my-4 text-pretty leading-7" {...props} />
   ),
 
   ul: (props: HTMLAttributes<HTMLUListElement>) => (
@@ -138,7 +153,7 @@ export const mdxComponents = {
 
   blockquote: (props: HTMLAttributes<HTMLQuoteElement>) => (
     <blockquote
-      className="my-6 border-l-4 border-[var(--border)] pl-5 text-[var(--fg-muted)] italic"
+      className="my-6 border-l-4 border-[var(--border)] pl-5 italic text-[var(--fg-muted)]"
       {...props}
     />
   ),
