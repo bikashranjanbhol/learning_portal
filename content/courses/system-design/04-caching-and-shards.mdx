@@ -1,0 +1,171 @@
+---
+title: How do you size a cache in front of a sharded database?
+slug: caching-and-shards
+description: Size the cache to hold the hot working set, not the whole dataset. For most read-heavy systems that is a few percent of total storage, and it decides how many shards you actually need behind it.
+order: 4
+isFree: true
+publishedAt: '2026-03-18'
+updatedAt: '2026-07-26'
+---
+
+Size a cache to hold the hot working set, not the dataset. For most read-heavy
+systems the top 1–5% of keys serve the large majority of reads, so a cache
+holding a few percent of total storage absorbs almost all traffic. That number
+then decides how many shards you need behind it — because shards are sized for
+the misses, not the requests.
+
+This chapter is also the reference page for every content type this site
+supports, so it deliberately uses all of them.
+
+## What does the read path actually look like?
+
+Four hops, and most requests stop at the third.
+
+<Image
+  src="/images/read-path.png"
+  alt="Request flow: client to edge CDN to cache to Postgres, with a return path showing that a cache hit stops at the cache and never reaches the database"
+  width={1600}
+  height={820}
+/>
+
+The important number is not the latency of any single hop — it is the ratio
+between them. A cache hit costs about a millisecond; a miss costs fifteen and
+lands on a machine that is also serving everyone else's misses.
+
+<Callout variant="note" title="Why the ratio matters more than the absolute numbers">
+  Hardware changes. The relationship between memory, SSD and network does not. Reasoning in
+  ratios means your answer survives the interviewer saying "assume NVMe".
+</Callout>
+
+## How much slower is each layer, really?
+
+Latency numbers are famously hard to hold in your head because they span nine
+orders of magnitude. Rescaling them to human durations fixes that — step
+through:
+
+<Animation
+  name="latency-scale"
+  ratio="16 / 11"
+  caption="Latency at each layer, log-scaled, with each duration rescaled as though an L1 cache hit took one second."
+/>
+
+The gap between a datacenter round trip and a cross-Atlantic one is the entire
+argument for putting a CDN in front of anything. Six days versus five years.
+
+## How does the cache decide what to keep?
+
+It does not, exactly — it evicts what has been used least recently and lets
+access patterns decide. What you control is the size.
+
+Rather than take the numbers on faith, change them:
+
+<Playground
+  name="cache-sizing"
+  minHeight={430}
+  caption="Drag the inputs. The derived numbers recompute live — nothing is executed, so this costs about 3 kB of JavaScript."
+/>
+
+Nine nodes at the defaults, not one and not ninety. That is the kind of number an
+interviewer is waiting to hear you derive rather than assert — and deriving it in
+front of them is much easier once you have felt which inputs actually move it.
+
+### What happens to the shards behind it?
+
+This is where the hit rate stops being a vanity metric. Shards are sized for the
+traffic that gets through:
+
+<Playground
+  name="shard-sizing"
+  minHeight={390}
+  caption="Start at 99%, then drag the hit rate down to 90%. The slider barely moves; the miss traffic goes up tenfold."
+/>
+
+The static version of this argument is a sentence you nod at and forget. Moving
+the slider yourself is the version you remember in an interview:
+
+```ts
+// 99% hit rate
+const missesPerSecond = 10_000 * (1 - 0.99); // 100/sec  -> 1 shard
+
+// 90% hit rate — sounds like a 9% change
+const missesPerSecond = 10_000 * (1 - 0.9); // 1,000/sec -> 2 shards, and climbing
+```
+
+<Callout variant="gotcha" title="Hit rate is non-linear in cost">
+  Going from 99% to 90% hit rate does not cost you 9% more database capacity. It costs you **ten
+  times** the miss traffic. This is why cache sizing is a capacity decision, not a performance
+  tweak.
+</Callout>
+
+## Which layer should be sharded, and how?
+
+Both, but for different reasons and with different mechanisms.
+
+| Layer    | Sharded by         | Rebalances on failure | Why                                 |
+| -------- | ------------------ | --------------------- | ----------------------------------- |
+| CDN      | Geography          | Automatic             | Latency is a function of distance   |
+| Cache    | Consistent hashing | ~1/N of keys move     | Losing the whole cache is an outage |
+| Postgres | Range or hash key  | Manual, painful       | Rebalancing means moving real data  |
+
+The cache row is the one worth dwelling on, and it is why the previous chapter
+spent so long on the ring. Step through what happens when a cache node dies:
+
+<Animation
+  name="hash-ring"
+  ratio="4 / 3"
+  caption="Consistent hashing: when node B fails, only the keys in B's arc move to C. Every other key keeps its owner."
+/>
+
+If that redistribution used modulo hashing instead, roughly three quarters of
+the cache would be invalidated at once — and all of that traffic would arrive at
+Postgres in the same second the cluster became less able to serve it.
+
+> The failure that takes the site down is rarely the node dying. It is the
+> thundering herd that arrives while you are one node short.
+
+## Does this pattern generalise?
+
+The shape — cheap fast layer in front, expensive slow layer behind, sized by
+what gets through — shows up constantly. Two-pointer scanning has the same
+flavour: eliminate as much of the search space as possible before doing
+expensive work.
+
+<Animation
+  name="array-scan"
+  ratio="16 / 9"
+  caption="Two-pointer scan on a sorted array. Each comparison discards a whole region rather than a single candidate."
+/>
+
+Both are the same instinct: spend a little to avoid spending a lot, and size the
+expensive thing for what survives the filter.
+
+<Callout variant="tip" title="A question worth asking back">
+  If an interviewer proposes a cache, ask what hit rate they are assuming and what happens at
+  cold start. The answer to the second one is usually where the interesting design work is.
+</Callout>
+
+## What this chapter does not cover
+
+Three things, each of which is a chapter of its own:
+
+1. **Cache invalidation.** Writes have to invalidate or update cached entries,
+   and getting that wrong produces stale reads that are far harder to debug than
+   slow ones.
+2. **Cold start.** A cache that has just been deployed has a 0% hit rate. If
+   your database cannot survive 10,000 reads/sec, you cannot deploy the cache.
+3. **Hot keys.** One key receiving 20% of traffic breaks every assumption above,
+   because no amount of sharding splits a single key.
+
+You can read more about the invalidation problem in
+[the consistent hashing chapter](/learn/system-design/consistent-hashing), which
+covers where replication fits.
+
+---
+
+### Content types on this page
+
+For reference while designing: prose, `inline code`, H2 and H3 headings, an
+ordered list, an unordered list, a blockquote, a table, an image via
+`next/image`, three interactive diagrams, two interactive code playgrounds, a
+static TypeScript code block, all four callout variants, an internal link, and a
+horizontal rule.

@@ -1,0 +1,113 @@
+---
+title: How do you do back-of-the-envelope estimation?
+slug: back-of-envelope-estimation
+description: Estimation in an interview means deriving a number from two or three facts you actually know, out loud, and being explicit about the assumptions. Here is the method and the handful of numbers worth memorising.
+order: 2
+isFree: true
+publishedAt: '2026-02-03'
+updatedAt: '2026-07-12'
+---
+
+Back-of-the-envelope estimation means deriving a number from two or three facts
+you already know, out loud, while stating your assumptions. The goal is not
+accuracy — being within an order of magnitude is fine. The goal is showing you
+can turn "how big does this need to be?" into arithmetic instead of a guess.
+
+Interviewers use estimates to check whether your design is even plausible. A
+candidate who proposes sharding for a dataset that fits in RAM has skipped this
+step.
+
+## Which numbers are worth memorising?
+
+Very few. These, roughly, and rounded hard:
+
+| Quantity                       | Rough value       |
+| ------------------------------ | ----------------- |
+| Seconds in a day               | ~100,000 (86,400) |
+| Seconds in a month             | ~2.5 million      |
+| L1 cache reference             | ~1 ns             |
+| Main memory reference          | ~100 ns           |
+| SSD random read                | ~100 µs           |
+| Round trip within a datacenter | ~0.5 ms           |
+| Round trip across the Atlantic | ~150 ms           |
+| Typical disk throughput        | ~500 MB/s (SSD)   |
+
+The exact figures matter less than the ratios. Memory is roughly 100× faster
+than SSD, which is roughly 1,000× faster than a cross-continent round trip.
+Those three gaps explain most caching and replication decisions you will ever
+justify.
+
+<Callout variant="note" title="Round aggressively">
+  Use 100,000 seconds per day, not 86,400. You are estimating, and the clean number keeps the
+  arithmetic mental — which is the whole point of doing it on a whiteboard.
+</Callout>
+
+## What does the method look like?
+
+Start from users, derive everything else. Say each step out loud.
+
+```python
+# "Design a URL shortener." How much storage after five years?
+
+WRITES_PER_DAY   = 10_000_000        # stated assumption: 10M new links/day
+SECONDS_PER_DAY  = 100_000           # rounded from 86,400
+BYTES_PER_RECORD = 500               # short code, long URL, metadata, index
+
+writes_per_second = WRITES_PER_DAY / SECONDS_PER_DAY
+# => 100 writes/sec. Comfortable for a single Postgres primary.
+
+reads_per_second = writes_per_second * 100
+# => 10,000 reads/sec. This is the number that drives the design.
+
+five_year_records = WRITES_PER_DAY * 365 * 5
+storage_bytes     = five_year_records * BYTES_PER_RECORD
+storage_tb        = storage_bytes / 1e12
+# => ~18 TB. Large, but not "rearchitect everything" large.
+```
+
+Three assumptions, four lines of arithmetic, and now the design has a spine:
+100 writes/sec is unremarkable, 10,000 reads/sec means a cache, and 18 TB means
+one machine will not hold it but a handful will.
+
+### Where does the 100:1 read ratio come from?
+
+You made it up, and you should say so. "I'm assuming a 100:1 read-to-write
+ratio, which is typical for link shorteners — if it's closer to 10:1 the cache
+matters less." That sentence is worth more than the number itself.
+
+## What does this rule out?
+
+The value of an estimate is mostly in what it eliminates.
+
+- **18 TB** rules out a single-node database, and rules _in_ a handful of shards.
+  It does not require anything exotic.
+- **10,000 reads/sec** rules out hitting disk on every request. It rules in a
+  cache, and tells you roughly how big: the hot 1% of 18 TB is ~180 GB, which is
+  several cache nodes, not one.
+- **100 writes/sec** rules out needing a write-path queue. If a candidate adds
+  Kafka here, the estimate is the evidence that it is unnecessary.
+
+<Callout variant="warning" title="Do not estimate what you will not use">
+  Computing bandwidth to three significant figures and then never referring to it again reads as
+  performance rather than reasoning. Estimate the two or three numbers that will actually change
+  your design, and skip the rest.
+</Callout>
+
+## A worked pattern you can reuse
+
+For almost any prompt, this sequence gets you to a design:
+
+1. **Users** — daily active users, stated as an assumption
+2. **Requests** — actions per user per day, divided by 100,000
+3. **Peak** — multiply average by 2–3×, because traffic is not flat
+4. **Storage** — records per day × bytes per record × retention
+5. **The one that matters** — pick whichever number above forces a decision
+
+Step five is what separates estimation from arithmetic. If none of your numbers
+changed the design, you estimated the wrong things.
+
+## What comes next
+
+Consistent hashing, which is the first place these numbers stop being abstract —
+sharding 18 TB across nodes is exactly the problem it solves, and the naive
+approach fails in a way the estimates make obvious.

@@ -1,0 +1,100 @@
+---
+title: What does AI search actually do to developer content traffic?
+slug: why-organic-search-still-matters
+description: AI answer engines take a share of informational queries, but the effect on technical content is uneven. Here is what changes, what does not, and what to measure.
+publishedAt: '2026-03-10'
+updatedAt: '2026-07-22'
+tags: ['seo', 'aeo', 'analytics']
+---
+
+AI answer engines absorb a meaningful share of short informational queries — the
+"what is X" traffic — while leaving traffic for depth, worked examples and
+original material largely intact. The practical consequence for technical content
+is a change in _which_ pages earn visits, not a uniform decline across all of them.
+
+This is worth getting right, because the two obvious reactions — panic and denial
+— both lead somewhere expensive.
+
+## What kind of query actually gets absorbed?
+
+The ones an LLM can answer completely from training data, where the reader wants
+a fact rather than an understanding.
+
+| Query type                                              | Absorbed by AI answers? |
+| ------------------------------------------------------- | ----------------------- |
+| "what is consistent hashing"                            | Largely yes             |
+| "python dict comprehension syntax"                      | Almost entirely         |
+| "consistent hashing vs rendezvous, when to use which"   | Partly                  |
+| "why did our cache miss rate spike after adding a node" | Rarely                  |
+| Anything requiring your own benchmarks                  | No                      |
+
+The pattern: the more a query needs synthesis of _your_ specific material —
+numbers you measured, diagrams you drew, interview data you collected — the less
+an answer engine can satisfy it without sending the reader to you.
+
+<Callout variant="note" title="This is a shift in mix, not just volume">
+  A site whose traffic is 90% definitional queries is in real trouble. A site whose traffic is
+  mostly "how do I actually do this, with the trade-offs" is affected much less. Look at your
+  query mix before deciding how worried to be.
+</Callout>
+
+## What should you do differently?
+
+Three things, in order of leverage.
+
+**Publish material that cannot be synthesised.** Your own benchmarks, your own
+failure post-mortems, dated specifics. An answer engine can paraphrase a
+definition of consistent hashing from a thousand sources; it cannot invent the
+latency numbers you measured on your own cluster last month.
+
+**Answer the question in the first 60 words.** Counterintuitively, being the
+source that gets extracted is good — citations are how discovery works now. The
+page that buries its answer under 800 words of preamble is neither cited nor read.
+
+**Decide deliberately about crawlers.** Blocking `GPTBot`, `ClaudeBot` and
+`PerplexityBot` everywhere costs you citations and discovery. Allowing them
+everywhere gives away paid content. The reasonable middle is allowing them on
+free material and disallowing them on premium paths:
+
+```ts
+// app/robots.ts
+export default function robots(): MetadataRoute.Robots {
+  return {
+    rules: [
+      { userAgent: '*', allow: '/', disallow: ['/api/', '/dashboard/', '/settings/'] },
+      {
+        userAgent: ['GPTBot', 'ClaudeBot', 'PerplexityBot'],
+        allow: ['/blog/', '/courses/'],
+        disallow: ['/learn/', '/api/', '/dashboard/', '/settings/'],
+      },
+    ],
+    sitemap: 'https://example.com/sitemap.xml',
+  };
+}
+```
+
+## What should you measure?
+
+Most people are not measuring this at all, which means they are guessing about a
+channel that is already material. Segment referrals by source from day one:
+
+1. Traffic with referrers from `chatgpt.com`, `perplexity.ai`, `claude.ai`
+2. Organic search traffic, split by query intent where you can
+3. The ratio between them, tracked over months rather than weeks
+
+<Callout variant="warning" title="The honest caveat">
+  Referral data from AI assistants is incomplete — many sessions arrive without a referrer at
+  all. Treat the numbers as a lower bound and a trend line, not a measurement. Anyone quoting a
+  precise percentage for this is overstating what the data supports.
+</Callout>
+
+## The uncomfortable conclusion
+
+If organic search is your only acquisition channel, this is a structural risk
+regardless of how the numbers land, because you are dependent on an intermediary
+that is actively changing the deal. Channels where a summary cannot sit between
+you and the reader — a newsletter, a video, a community — do not have that
+property.
+
+That is not an argument against doing SEO well. It is an argument against doing
+only SEO.

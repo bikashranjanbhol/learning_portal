@@ -1,0 +1,138 @@
+---
+title: How does consistent hashing handle node failure?
+slug: consistent-hashing
+description: Consistent hashing moves only the keys owned by the failed node — roughly 1/N of the data — instead of remapping everything. Virtual nodes are what make the redistribution even.
+order: 3
+isFree: false
+publishedAt: '2026-02-24'
+updatedAt: '2026-07-18'
+---
+
+When a node fails, consistent hashing remaps only the keys that node owned —
+roughly 1/N of the data — to its neighbour on the ring. Every other key stays
+where it is. Naive modulo hashing, by contrast, remaps almost every key when the
+node count changes, which empties the cache and stampedes the database behind it.
+
+That difference is the entire reason the technique exists.
+
+## Why does modulo hashing fail?
+
+The obvious way to spread keys across N nodes:
+
+```ts
+function nodeFor(key: string, nodeCount: number): number {
+  return hash(key) % nodeCount;
+}
+```
+
+This distributes evenly and is fast. It also has a fatal property: the node
+count is in the formula. Change N, and almost every key maps somewhere new.
+
+```ts
+// 4 nodes, one dies. How many of 1,000,000 keys move?
+let moved = 0;
+for (const key of keys) {
+  if (hash(key) % 4 !== hash(key) % 3) moved += 1;
+}
+// moved ≈ 750,000 — about 75% of the keyspace.
+```
+
+For a cache, that is a 75% miss rate the instant a node dies, arriving all at
+once, while the cluster is already degraded. The database behind it receives
+several times its normal read load at the worst possible moment. This is the
+failure mode that takes sites down.
+
+<Callout variant="gotcha" title="The failure is not the node dying">
+  One node of four dying should cost you 25% of your cache. Modulo hashing turns that into 75%.
+  The outage is caused by the remapping, not the hardware.
+</Callout>
+
+## How does the ring work?
+
+Map the hash space onto a circle. Place both nodes and keys on it. Each key is
+owned by the first node encountered walking clockwise.
+
+```ts
+type Ring = Array<{ position: number; nodeId: string }>;
+
+function owner(ring: Ring, key: string): string {
+  const position = hash(key);
+
+  // First node clockwise from the key's position.
+  for (const entry of ring) {
+    if (entry.position >= position) return entry.nodeId;
+  }
+
+  // Past the last node — wrap to the first. The ring is a circle.
+  return ring[0]!.nodeId;
+}
+```
+
+Now remove a node. Only keys sitting between the removed node and its
+counter-clockwise predecessor need a new owner; they slide to the next node
+clockwise. Every other key's answer is unchanged, because the positions of the
+other nodes did not move.
+
+Adding a node is the mirror image: it claims the keys in the arc it lands on,
+taking them from one neighbour. Nothing else moves.
+
+### Why does this need virtual nodes?
+
+Because a handful of randomly placed points do not divide a circle evenly. With
+four nodes you might get arcs of 40%, 30%, 20% and 10% — and when the 40% node
+dies, its entire share lands on one neighbour.
+
+The fix is to place each physical node at many positions:
+
+```ts
+function buildRing(nodeIds: string[], replicas = 150): Ring {
+  const ring: Ring = [];
+
+  for (const nodeId of nodeIds) {
+    // 150 virtual nodes each. Same machine, many points on the ring.
+    for (let i = 0; i < replicas; i += 1) {
+      ring.push({ position: hash(`${nodeId}#${i}`), nodeId });
+    }
+  }
+
+  return ring.sort((a, b) => a.position - b.position);
+}
+```
+
+With 150 virtual nodes per physical node, the arcs average out and each node
+carries close to its fair share. More importantly, when a node fails its load is
+scattered across _all_ remaining nodes rather than dumped on one — because its
+150 arcs have 150 different clockwise neighbours.
+
+| Replicas per node | Load spread across 10 nodes |
+| ----------------- | --------------------------- |
+| 1                 | Highly uneven; ±40% typical |
+| 10                | ±20%                        |
+| 100               | ±5%                         |
+| 500               | ±2%, diminishing returns    |
+
+<Callout variant="tip" title="The number interviewers expect">
+  100–200 virtual nodes per physical node is the conventional range. Dynamo used a variant of
+  this; Cassandra defaults to 256. Being able to say "a few hundred, because fewer gives uneven
+  distribution and more just costs memory in the ring" is the answer they are listening for.
+</Callout>
+
+## What does this still not solve?
+
+Consistent hashing is about _placement_. It says nothing about:
+
+- **Hot keys.** One viral key still lands on one node. Virtual nodes distribute
+  the keyspace, not the traffic within a key.
+- **Replication.** Ownership by one node means losing that node loses the data.
+  Real systems store each key on the next R nodes clockwise.
+- **Rebalancing cost.** Moving 1/N of the data is far better than moving all of
+  it, but it is not free, and it happens while the cluster is degraded.
+
+Each of those is a separate mechanism, and interviewers frequently probe them as
+follow-ups precisely because candidates who memorised "use consistent hashing"
+have nothing to say about them.
+
+## What comes next
+
+Replication, which is where the third bullet above gets an answer — and where
+consistency stops being a footnote and becomes the main event.

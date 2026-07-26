@@ -1,0 +1,28 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# next
+.next/
+out/
+build/
+next-env.d.ts
+*.tsbuildinfo
+
+# env — never commit real keys
+.env
+.env.local
+.env.*.local
+
+# supabase local dev
+supabase/.branches
+supabase/.temp
+
+# misc
+.DS_Store
+*.pem
+.vercel
+coverage/
+npm-debug.log*
+yarn-error.log*
